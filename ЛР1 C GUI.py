@@ -87,21 +87,17 @@ class RadarSignalApp:
         
     def print_welcome(self):
         """Вывод приветственного сообщения"""
-        print("="*60)
-        print("🔧 РАДИОЛОКАЦИОННЫЕ СИГНАЛЫ - АНАЛИЗ ФУНКЦИИ НЕОПРЕДЕЛЕННОСТИ")
-        print("="*60)
-        print("\n📌 Выберите тип сигнала из меню ниже для анализа")
-        print("📌 Все результаты выводятся в эту панель")
-        print("📌 Графики отображаются слева\n")
-        print("-"*60)
+        print("\n РАДИОЛОКАЦИОННЫЕ СИГНАЛЫ - АНАЛИЗ ФУНКЦИИ НЕОПРЕДЕЛЕННОСТИ")
+        print("\n Выберите тип сигнала из меню ниже для анализа")
+        print("\n Все результаты выводятся в эту панель")
+        print("\n Графики отображаются слева\n")
         print("\nДоступные сигналы:")
-        print("  1. Прямоугольный импульс (τи = 0.25 мкс)")
-        print("  2. Сигнал с ЛЧМ (τи = 1 мкс, Δf = 20 МГц)")
-        print("  3. Код Баркера (длина 13)")
-        print("  4. М-последовательность (длина 15)")
-        print("  5. Пачка импульсов (4 импульса)")
-        print("  6. R/V диаграмма для пачки импульсов\n")
-        print("-"*60)
+        print(" \n 1. Прямоугольный импульс (τи = 0.25 мкс)")
+        print(" \n 2. Сигнал с ЛЧМ (τи = 1 мкс, Δf = 20 МГц)")
+        print(" \n 3. Код Баркера (длина 13)")
+        print(" \n 4. М-последовательность (длина 15)")
+        print(" \n 5. Пачка импульсов (4 импульса)")
+        print(" \n 6. R/V диаграмма для пачки импульсов\n")
         
     def setup_info_panel(self):
         """Правая панель с информацией"""
@@ -110,7 +106,7 @@ class RadarSignalApp:
         self.info_frame.grid_propagate(False)
         
         # Заголовок
-        title_label = ctk.CTkLabel(self.info_frame, text="📊 ИНФОРМАЦИЯ", 
+        title_label = ctk.CTkLabel(self.info_frame, text=" ИНФОРМАЦИЯ", 
                                     font=ctk.CTkFont(size=18, weight="bold"))
         title_label.pack(pady=10)
         
@@ -124,7 +120,7 @@ class RadarSignalApp:
         separator.pack(fill="x", padx=10, pady=5)
         
         # Параметры сигнала
-        params_label = ctk.CTkLabel(self.info_frame, text="⚙️ ТЕКУЩИЙ СИГНАЛ", 
+        params_label = ctk.CTkLabel(self.info_frame, text=" ТЕКУЩИЙ СИГНАЛ", 
                                      font=ctk.CTkFont(size=14, weight="bold"))
         params_label.pack(pady=5)
         
@@ -150,7 +146,7 @@ class RadarSignalApp:
         self.main_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
         
         # Заголовок
-        title_label = ctk.CTkLabel(self.main_frame, text="📈 ФУНКЦИЯ НЕОПРЕДЕЛЕННОСТИ РАДИОСИГНАЛОВ", 
+        title_label = ctk.CTkLabel(self.main_frame, text=" ФУНКЦИЯ НЕОПРЕДЕЛЕННОСТИ РАДИОСИГНАЛОВ", 
                                     font=ctk.CTkFont(size=20, weight="bold"))
         title_label.pack(pady=10)
         
@@ -165,12 +161,12 @@ class RadarSignalApp:
         
         # Ряд кнопок
         buttons = [
-            ("🔹 Прямоугольный импульс", self.calc_pulse),
-            ("🔸 Сигнал с ЛЧМ", self.calc_lfm),
-            ("🔹 Код Баркера", self.calc_barker),
-            ("🔸 М-последовательность", self.calc_msequence),
-            ("🔹 Пачка импульсов", self.calc_burst),
-            ("🎯 R/V график", self.calc_rv_plot)
+            (" Прямоугольный импульс", self.calc_pulse),
+            (" Сигнал с ЛЧМ", self.calc_lfm),
+            (" Код Баркера", self.calc_barker),
+            (" М-последовательность", self.calc_msequence),
+            (" Пачка импульсов", self.calc_burst),
+            (" R/V график", self.calc_rv_plot)
         ]
         
         for i, (text, command) in enumerate(buttons):
@@ -205,7 +201,7 @@ class RadarSignalApp:
         
     def update_info_panel(self, signal_name, params, delta_R, delta_V):
         """Обновление панели информации"""
-        self.current_signal_label.configure(text=f"📡 {signal_name}")
+        self.current_signal_label.configure(text=f" {signal_name}")
         info_text = f"τи = {params.get('Tu', 0)*1e6:.2f} мкс\n"
         if 'deltaF' in params:
             info_text += f"Δf = {params['deltaF']/1e6:.0f} МГц\n"
@@ -214,7 +210,7 @@ class RadarSignalApp:
         if 'N_pt' in params:
             info_text += f"N = {params['N_pt']}\n"
             info_text += f"Tпр = {params.get('Tpr', 0)*1e6:.2f} мкс\n"
-        info_text += f"\n📏 Разрешение:\n"
+        info_text += f"\nРазрешение:\n"
         info_text += f"По дальности: {delta_R:.1f} м\n"
         info_text += f"По скорости: {delta_V:.2f} м/с"
         self.resolution_label.configure(text=info_text)
@@ -230,9 +226,10 @@ class RadarSignalApp:
         
     def calc_pulse(self):
         """Задание 1: Одиночный прямоугольный импульс"""
-        print("\n" + "="*60)
-        print("ЗАДАНИЕ 1: Одиночный прямоугольный импульс")
-        print("="*60)
+        print("\n")
+        print("\nЗАДАНИЕ 1: Одиночный прямоугольный импульс")
+        print("\n")
+        
         
         Tu = 0.25e-6
         Tpr = 1.5e-6
@@ -304,15 +301,16 @@ class RadarSignalApp:
         delta_V = (1/Tu) * lambda_c / 2
         self.update_info_panel("Прямоугольный импульс", {'Tu': Tu, 'Tpr': Tpr, 'N_pt': N_pt}, delta_R, delta_V)
         
-        print(f"✅ Разрешение по дальности: {delta_R:.2f} м")
-        print(f"✅ Разрешение по скорости: {delta_V:.2f} м/с")
-        print(f"✅ Ширина спектра: ~{1/Tu/1e6:.1f} МГц")
+        print(f" Разрешение по дальности: {delta_R:.2f} м")
+        print(f" Разрешение по скорости: {delta_V:.2f} м/с")
+        print(f" Ширина спектра: ~{1/Tu/1e6:.1f} МГц")
         
     def calc_lfm(self):
         """Задание 2: Сигнал с ЛЧМ"""
-        print("\n" + "="*60)
-        print("ЗАДАНИЕ 2: Сигнал с ЛЧМ")
-        print("="*60)
+        print("\n")
+        print("\nЗАДАНИЕ 2: Сигнал с ЛЧМ")
+        print("\n")
+        
         
         Tu = 1e-6
         Tpr = 5e-6
@@ -387,15 +385,16 @@ class RadarSignalApp:
         delta_V = (1/Tu) * lambda_c / 2
         self.update_info_panel("Сигнал с ЛЧМ", {'Tu': Tu, 'deltaF': deltaF}, delta_R, delta_V)
         
-        print(f"✅ Разрешение по дальности (после сжатия): {delta_R:.2f} м")
-        print(f"✅ Разрешение по скорости: {delta_V:.2f} м/с")
-        print(f"✅ База сигнала: {Tu * deltaF:.0f}")
+        print(f" Разрешение по дальности (после сжатия): {delta_R:.2f} м")
+        print(f" Разрешение по скорости: {delta_V:.2f} м/с")
+        print(f" База сигнала: {Tu * deltaF:.0f}")
         
     def calc_barker(self):
         """Задание 3: Код Баркера"""
-        print("\n" + "="*60)
-        print("ЗАДАНИЕ 3: Код Баркера (длина 13)")
-        print("="*60)
+        print("\n")
+        print("\nЗАДАНИЕ 3: Код Баркера (длина 13)")
+        print("\n")
+        
         
         code = [1, 1, 1, 1, -1, 1, -1, 1, -1, -1, 1, -1, -1]
         Tu = 0.25e-6
@@ -464,16 +463,17 @@ class RadarSignalApp:
         delta_V = (1/(len(code)*Tu)) * lambda_c / 2
         self.update_info_panel("Код Баркера", {'Tu': Tu, 'code_len': len(code)}, delta_R, delta_V)
         
-        print(f"✅ Разрешение по дальности: {delta_R:.2f} м")
-        print(f"✅ Разрешение по скорости: {delta_V:.2f} м/с")
-        print(f"✅ База сигнала: {len(code)}")
-        print(f"✅ Уровень боковых лепестков АКФ: 1/{len(code)} = {1/len(code):.3f} ({20*np.log10(1/len(code)):.1f} дБ)")
+        print(f" Разрешение по дальности: {delta_R:.2f} м")
+        print(f" Разрешение по скорости: {delta_V:.2f} м/с")
+        print(f" База сигнала: {len(code)}")
+        print(f" Уровень боковых лепестков АКФ: 1/{len(code)} = {1/len(code):.3f} ({20*np.log10(1/len(code)):.1f} дБ)")
         
     def calc_msequence(self):
         """Задание 4: М-последовательность"""
-        print("\n" + "="*60)
-        print("ЗАДАНИЕ 4: М-последовательность (длина 15)")
-        print("="*60)
+        print("\n")
+        print("\nЗАДАНИЕ 4: М-последовательность (длина 15)")
+        print("\n")
+        
         
         code = [1, 1, 1, 1, -1, 1, -1, 1, -1, -1, 1, -1, -1, -1, -1]
         Tu = 0.25e-6
@@ -542,15 +542,16 @@ class RadarSignalApp:
         delta_V = (1/(len(code)*Tu)) * lambda_c / 2
         self.update_info_panel("М-последовательность", {'Tu': Tu, 'code_len': len(code)}, delta_R, delta_V)
         
-        print(f"✅ Разрешение по дальности: {delta_R:.2f} м")
-        print(f"✅ Разрешение по скорости: {delta_V:.2f} м/с")
-        print(f"✅ База сигнала: {len(code)}")
+        print(f" Разрешение по дальности: {delta_R:.2f} м")
+        print(f" Разрешение по скорости: {delta_V:.2f} м/с")
+        print(f" База сигнала: {len(code)}")
         
     def calc_burst(self):
         """Задание 5: Пачка импульсов"""
-        print("\n" + "="*60)
-        print("ЗАДАНИЕ 5: Пачка прямоугольных импульсов")
-        print("="*60)
+        print("\n")
+        print("\nЗАДАНИЕ 5: Пачка прямоугольных импульсов")
+        print("\n")
+        
         
         Tu = 0.25e-6
         Tpr = 1.5e-6
@@ -621,15 +622,16 @@ class RadarSignalApp:
         delta_V = c0 / (2 * f0 * N_pt * Tpr)
         self.update_info_panel("Пачка импульсов", {'Tu': Tu, 'Tpr': Tpr, 'N_pt': N_pt}, delta_R, delta_V)
         
-        print(f"✅ Разрешение по дальности (одиночный импульс): {delta_R:.2f} м")
-        print(f"✅ Разрешение по скорости (пачка): {delta_V:.2f} м/с")
-        print(f"✅ Период неоднозначности по дальности: {c0 * Tpr / 2:.1f} м")
+        print(f" Разрешение по дальности (одиночный импульс): {delta_R:.2f} м")
+        print(f" Разрешение по скорости (пачка): {delta_V:.2f} м/с")
+        print(f" Период неоднозначности по дальности: {c0 * Tpr / 2:.1f} м")
         
     def calc_rv_plot(self):
         """Дополнительный график: ФН в координатах (R, V)"""
-        print("\n" + "="*60)
-        print("ДОПОЛНИТЕЛЬНЫЙ ГРАФИК: R/V диаграмма для пачки импульсов")
-        print("="*60)
+        print("\n")
+        print("\nДОПОЛНИТЕЛЬНЫЙ ГРАФИК: R/V диаграмма для пачки импульсов")
+        print("\n")
+        
         
         Tu = 0.25e-6
         Tpr = 1.5e-6
@@ -664,10 +666,10 @@ class RadarSignalApp:
         V_f_cut = V_f[mask_V]
         amf_cut = amf[np.ix_(mask_R, mask_V)]
         
-        print(f"✅ Период неоднозначности по дальности: {R_max_unambiguous:.1f} м")
-        print(f"✅ Разрешение по дальности: {delta_R:.1f} м")
-        print(f"✅ Разрешение по скорости: {delta_V:.2f} м/с")
-        print(f"✅ Пределы графика: R = ±{R_limit:.0f} м, V = ±{V_limit:.0f} м/с")
+        print(f" Период неоднозначности по дальности: {R_max_unambiguous:.1f} м")
+        print(f" Разрешение по дальности: {delta_R:.1f} м")
+        print(f" Разрешение по скорости: {delta_V:.2f} м/с")
+        print(f" Пределы графика: R = ±{R_limit:.0f} м, V = ±{V_limit:.0f} м/с")
         
         fig, ax = plt.subplots(figsize=(12, 10))
         fig.patch.set_facecolor('#2b2b2b')
