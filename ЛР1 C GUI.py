@@ -2,6 +2,7 @@ import customtkinter as ctk
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
 from scipy.fft import fft, fftshift
 from scipy.signal import correlate
 import sys
@@ -16,7 +17,7 @@ ctk.set_default_color_theme("blue")
 IF = 50e6           # Промежуточная частота, Гц
 Fs = 200e6          # Частота дискретизации, Гц
 Ts = 1 / Fs         # Период дискретизации, с
-Ta = 50e-6          # Время анализа, с
+Ta = 100e-6         # Время анализа, с (увеличено для пачки ЛЧМ)
 c0 = 3e8            # Скорость света, м/с
 lambda_c = 0.03     # Длина волны, м (для f=10 ГГц)
 f0 = 10e9           # Рабочая частота РЛС, Гц
@@ -25,6 +26,37 @@ f0 = 10e9           # Рабочая частота РЛС, Гц
 t = np.arange(0, Ta, Ts)
 Nt = len(t)
 f = np.arange(Nt) * Fs / Nt
+
+# ==================== ПАРАМЕТРЫ СИГНАЛОВ (глобальные переменные) ====================
+# Прямоугольный импульс
+PULSE_Tu = 0.25e-6
+PULSE_Tpr = 1.5e-6
+PULSE_N_pt = 1
+
+# Сигнал с ЛЧМ
+LFM_Tu = 1e-6
+LFM_Tpr = 5e-6
+LFM_deltaF = 20e6
+LFM_N_pt = 1
+
+# Код Баркера
+BARKER_CODE = [1, 1, 1, 1, -1, 1, -1, 1, -1, -1, 1, -1, -1]
+BARKER_Tu = 0.25e-6
+
+# М-последовательность
+MSEQ_CODE = [1, 1, 1, 1, -1, 1, -1, 1, -1, -1, 1, -1, -1, -1, -1]
+MSEQ_Tu = 0.25e-6
+
+# Пачка прямоугольных импульсов
+BURST_Tu = 0.25e-6
+BURST_Tpr = 1.5e-6
+BURST_N_pt = 4
+
+# Пачка ЛЧМ сигналов
+LFM_BURST_Tu = 2e-6           # Длительность одного ЛЧМ импульса
+LFM_BURST_Tpr = 5e-6          # Период повторения
+LFM_BURST_N_pt = 4            # Количество импульсов в пачке
+LFM_BURST_deltaF = 10e6       # Девиация частоты для каждого импульса
 
 # ==================== ФУНКЦИЯ НЕОПРЕДЕЛЕННОСТИ ====================
 def ambiguity_function_full(U, t, Ts, tau_min, tau_max, N_tau, f_max_display):
@@ -57,6 +89,80 @@ def ambiguity_function_full(U, t, Ts, tau_min, tau_max, N_tau, f_max_display):
         amf_abs = amf_abs / np.max(amf_abs)
     return amf_abs, tau_vec, f_plot
 
+# ==================== ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ ВСЕХ СИГНАЛОВ ====================
+
+def generate_pulse_signal():
+    """Генерация прямоугольного импульса"""
+    S_ampl = np.zeros(Nt, dtype=float)
+    for n in range(PULSE_N_pt):
+        mask = (t >= n * PULSE_Tpr) & (t < n * PULSE_Tpr + PULSE_Tu)
+        S_ampl[mask] = 1.0
+    
+    U = S_ampl * np.exp(1j * 2 * np.pi * IF * t)
+    return U
+
+def generate_lfm_signal():
+    """Генерация сигнала с ЛЧМ"""
+    S_ampl = np.zeros(Nt, dtype=float)
+    for n in range(LFM_N_pt):
+        mask = (t >= n * LFM_Tpr) & (t < n * LFM_Tpr + LFM_Tu)
+        S_ampl[mask] = 1.0
+    
+    U = np.zeros(Nt, dtype=complex)
+    for n in range(LFM_N_pt):
+        mask = (t >= n * LFM_Tpr) & (t < n * LFM_Tpr + LFM_Tu)
+        t_local = t[mask] - n * LFM_Tpr
+        phase = 2 * np.pi * IF * t_local + 2 * np.pi * (LFM_deltaF/(2*LFM_Tu)) * t_local**2
+        U[mask] = S_ampl[mask] * np.exp(1j * phase)
+    
+    return U
+
+def generate_barker_signal():
+    """Генерация кода Баркера"""
+    S_ampl = np.zeros(Nt, dtype=float)
+    for i, val in enumerate(BARKER_CODE):
+        mask = (t >= i * BARKER_Tu) & (t < i * BARKER_Tu + BARKER_Tu)
+        S_ampl[mask] = val
+    
+    U = S_ampl * np.exp(1j * 2 * np.pi * IF * t)
+    return U
+
+def generate_msequence_signal():
+    """Генерация М-последовательности"""
+    S_ampl = np.zeros(Nt, dtype=float)
+    for i, val in enumerate(MSEQ_CODE):
+        mask = (t >= i * MSEQ_Tu) & (t < i * MSEQ_Tu + MSEQ_Tu)
+        S_ampl[mask] = val
+    
+    U = S_ampl * np.exp(1j * 2 * np.pi * IF * t)
+    return U
+
+def generate_burst_signal():
+    """Генерация пачки прямоугольных импульсов"""
+    S_ampl = np.zeros(Nt, dtype=float)
+    for n in range(BURST_N_pt):
+        mask = (t >= n * BURST_Tpr) & (t < n * BURST_Tpr + BURST_Tu)
+        S_ampl[mask] = 1.0
+    
+    U = S_ampl * np.exp(1j * 2 * np.pi * IF * t)
+    return U
+
+def generate_lfm_burst_signal():
+    """Генерация пачки ЛЧМ сигналов"""
+    S_ampl = np.zeros(Nt, dtype=float)
+    for n in range(LFM_BURST_N_pt):
+        mask = (t >= n * LFM_BURST_Tpr) & (t < n * LFM_BURST_Tpr + LFM_BURST_Tu)
+        S_ampl[mask] = 1.0
+    
+    U = np.zeros(Nt, dtype=complex)
+    for n in range(LFM_BURST_N_pt):
+        mask = (t >= n * LFM_BURST_Tpr) & (t < n * LFM_BURST_Tpr + LFM_BURST_Tu)
+        t_local = t[mask] - n * LFM_BURST_Tpr
+        phase = 2 * np.pi * IF * t_local + 2 * np.pi * (LFM_BURST_deltaF/(2*LFM_BURST_Tu)) * t_local**2
+        U[mask] = S_ampl[mask] * np.exp(1j * phase)
+    
+    return U
+
 # ==================== ГЛАВНОЕ ПРИЛОЖЕНИЕ ====================
 class RadarSignalApp:
     def __init__(self):
@@ -64,195 +170,391 @@ class RadarSignalApp:
         self.root.title("Радиолокационные сигналы - Анализ функции неопределенности")
         self.root.geometry("1600x900")
         
-        # Переменные для хранения результатов
-        self.current_figure = None
-        self.canvas = None
-        self.results_text = ""
-        
-        # Настройка сетки (исправлено: columnconfigure вместо grid_column_configure)
-        self.root.columnconfigure(0, weight=3)  # Графики
-        self.root.columnconfigure(1, weight=1)  # Панель информации
+        # Настройка сетки
+        self.root.columnconfigure(0, weight=3)
+        self.root.columnconfigure(1, weight=1)
         self.root.rowconfigure(0, weight=1)
         
-        # Создание виджетов
+        # Создание информационной панели
         self.setup_info_panel()
-        self.setup_main_frame()
-        self.setup_buttons()
         
-        # Перенаправление stdout для вывода в GUI
-        self.setup_output_redirect()
+        # Создание прокручиваемого фрейма для графиков
+        self.scrollable_frame = ctk.CTkScrollableFrame(self.root, corner_radius=10)
+        self.scrollable_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
         
-        # Вывод приветствия
-        self.print_welcome()
+        # Заголовок
+        title_label = ctk.CTkLabel(self.scrollable_frame, text=" АНАЛИЗ ФУНКЦИИ НЕОПРЕДЕЛЕННОСТИ РАДИОЛОКАЦИОННЫХ СИГНАЛОВ", 
+                                    font=ctk.CTkFont(size=20, weight="bold"))
+        title_label.pack(pady=10)
         
-    def print_welcome(self):
-        """Вывод приветственного сообщения"""
-        print("\n РАДИОЛОКАЦИОННЫЕ СИГНАЛЫ - АНАЛИЗ ФУНКЦИИ НЕОПРЕДЕЛЕННОСТИ")
-        print("\n Выберите тип сигнала из меню ниже для анализа")
-        print("\n Все результаты выводятся в эту панель")
-        print("\n Графики отображаются слева\n")
-        print("\nДоступные сигналы:")
-        print(" \n 1. Прямоугольный импульс (τи = 0.25 мкс)")
-        print(" \n 2. Сигнал с ЛЧМ (τи = 1 мкс, Δf = 20 МГц)")
-        print(" \n 3. Код Баркера (длина 13)")
-        print(" \n 4. М-последовательность (длина 15)")
-        print(" \n 5. Пачка импульсов (4 импульса)")
-        print(" \n 6. R/V диаграмма для пачки импульсов\n")
+        # Фрейм для размещения всех графиков
+        self.plots_frame = ctk.CTkFrame(self.scrollable_frame)
+        self.plots_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Генерация и отображение всех графиков
+        self.generate_all_plots()
         
     def setup_info_panel(self):
-        """Правая панель с информацией"""
-        self.info_frame = ctk.CTkFrame(self.root, width=350, corner_radius=10)
+        """Правая панель с информацией по заданиям"""
+        self.info_frame = ctk.CTkFrame(self.root, width=400, corner_radius=10)
         self.info_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
         self.info_frame.grid_propagate(False)
         
         # Заголовок
-        title_label = ctk.CTkLabel(self.info_frame, text=" ИНФОРМАЦИЯ", 
+        title_label = ctk.CTkLabel(self.info_frame, text=" ИНФОРМАЦИЯ ПО ЗАДАНИЯМ", 
                                     font=ctk.CTkFont(size=18, weight="bold"))
         title_label.pack(pady=10)
         
-        # Текстовое поле для вывода
-        self.output_text = ctk.CTkTextbox(self.info_frame, width=330, height=400, 
-                                           font=ctk.CTkFont(size=11))
-        self.output_text.pack(pady=10, padx=10, fill="both", expand=True)
+        # Создание прокручиваемого фрейма для информации
+        self.info_scrollable = ctk.CTkScrollableFrame(self.info_frame, height=800)
+        self.info_scrollable.pack(fill="both", expand=True, padx=10, pady=10)
         
-        # Разделитель
-        separator = ctk.CTkFrame(self.info_frame, height=2, fg_color="gray")
-        separator.pack(fill="x", padx=10, pady=5)
+        # Словарь для хранения фреймов информации по каждому заданию
+        self.info_frames = {}
         
-        # Параметры сигнала
-        params_label = ctk.CTkLabel(self.info_frame, text=" ТЕКУЩИЙ СИГНАЛ", 
-                                     font=ctk.CTkFont(size=14, weight="bold"))
-        params_label.pack(pady=5)
+        # Создание информационных блоков с динамическими данными
+        self.create_info_blocks()
         
-        self.params_frame = ctk.CTkFrame(self.info_frame)
-        self.params_frame.pack(pady=5, padx=10, fill="x")
+        # Добавление общей информации
+        self.add_general_info()
         
-        self.current_signal_label = ctk.CTkLabel(self.params_frame, text="Не выбран", 
-                                                  font=ctk.CTkFont(size=12))
-        self.current_signal_label.pack(pady=2)
+    def create_info_blocks(self):
+        """Создание информационных блоков с данными из переменных"""
         
-        self.resolution_label = ctk.CTkLabel(self.params_frame, text="", 
-                                              font=ctk.CTkFont(size=11))
-        self.resolution_label.pack(pady=2)
+        # Задание 1: Прямоугольный импульс
+        delta_R_pulse = c0 * PULSE_Tu / 2
+        delta_V_pulse = (1/PULSE_Tu) * lambda_c / 2
+        spectrum_width = 1/PULSE_Tu/1e6
         
-        # Кнопка очистки
-        clear_btn = ctk.CTkButton(self.info_frame, text="Очистить вывод", 
-                                   command=self.clear_output, height=30)
-        clear_btn.pack(pady=10, padx=20, fill="x")
+        self.create_info_block(
+            task_num=1,
+            title="Задание 1: Прямоугольный импульс",
+            signal_type="Прямоугольный радиоимпульс",
+            params={
+                "Длительность импульса (τи)": f"{PULSE_Tu*1e6:.2f} мкс",
+                "Период повторения (Tпр)": f"{PULSE_Tpr*1e6:.2f} мкс",
+                "Количество импульсов": str(PULSE_N_pt),
+                "Промежуточная частота (IF)": f"{IF/1e6:.0f} МГц",
+                "Частота дискретизации": f"{Fs/1e6:.0f} МГц"
+            },
+            resolutions={
+                "Разрешение по дальности (ΔR)": f"{delta_R_pulse:.1f} м",
+                "Разрешение по скорости (ΔV)": f"{delta_V_pulse:.2f} м/с",
+                "Ширина спектра": f"~{spectrum_width:.1f} МГц",
+                "База сигнала": "1"
+            }
+        )
         
-    def setup_main_frame(self):
-        """Основная область для графиков"""
-        self.main_frame = ctk.CTkFrame(self.root, corner_radius=10)
-        self.main_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        # Задание 2: Сигнал с ЛЧМ
+        delta_R_lfm = c0 / (2 * LFM_deltaF)
+        delta_V_lfm = (1/LFM_Tu) * lambda_c / 2
+        base = LFM_Tu * LFM_deltaF
+        
+        self.create_info_block(
+            task_num=2,
+            title="Задание 2: Сигнал с ЛЧМ",
+            signal_type="Линейно-частотно-модулированный сигнал",
+            params={
+                "Длительность импульса (τи)": f"{LFM_Tu*1e6:.2f} мкс",
+                "Период повторения (Tпр)": f"{LFM_Tpr*1e6:.2f} мкс",
+                "Девиация частоты (Δf)": f"{LFM_deltaF/1e6:.0f} МГц",
+                "Количество импульсов": str(LFM_N_pt),
+                "Промежуточная частота (IF)": f"{IF/1e6:.0f} МГц"
+            },
+            resolutions={
+                "Разрешение по дальности (ΔR)": f"{delta_R_lfm:.1f} м",
+                "Разрешение по скорости (ΔV)": f"{delta_V_lfm:.2f} м/с",
+                "База сигнала": f"{base:.0f}",
+                "Коэффициент сжатия": f"{base:.0f}"
+            }
+        )
+        
+        # Задание 3: Код Баркера
+        code_str = ''.join(['1' if x == 1 else '-1' for x in BARKER_CODE])
+        delta_R_barker = c0 * BARKER_Tu / 2
+        delta_V_barker = (1/(len(BARKER_CODE)*BARKER_Tu)) * lambda_c / 2
+        side_lobe_level = 1/len(BARKER_CODE)
+        side_lobe_db = 20*np.log10(side_lobe_level)
+        
+        self.create_info_block(
+            task_num=3,
+            title="Задание 3: Код Баркера",
+            signal_type="Фазоманипулированный сигнал (код Баркера)",
+            params={
+                "Длина кода": str(len(BARKER_CODE)),
+                "Кодовая последовательность": code_str,
+                "Длительность элементарного импульса": f"{BARKER_Tu*1e6:.2f} мкс",
+                "Общая длительность сигнала": f"{len(BARKER_CODE) * BARKER_Tu * 1e6:.2f} мкс",
+                "Количество импульсов": "1"
+            },
+            resolutions={
+                "Разрешение по дальности (ΔR)": f"{delta_R_barker:.1f} м",
+                "Разрешение по скорости (ΔV)": f"{delta_V_barker:.2f} м/с",
+                "Уровень боковых лепестков АКФ": f"1/{len(BARKER_CODE)} = {side_lobe_level:.3f} ({side_lobe_db:.1f} дБ)",
+                "База сигнала": str(len(BARKER_CODE))
+            }
+        )
+        
+        # Задание 4: М-последовательность
+        mseq_str = ''.join(['1' if x == 1 else '-1' for x in MSEQ_CODE])
+        delta_R_mseq = c0 * MSEQ_Tu / 2
+        delta_V_mseq = (1/(len(MSEQ_CODE)*MSEQ_Tu)) * lambda_c / 2
+        
+        self.create_info_block(
+            task_num=4,
+            title="Задание 4: М-последовательность",
+            signal_type="Псевдослучайная М-последовательность",
+            params={
+                "Длина последовательности": str(len(MSEQ_CODE)),
+                "Кодовая последовательность": mseq_str,
+                "Длительность элементарного импульса": f"{MSEQ_Tu*1e6:.2f} мкс",
+                "Общая длительность сигнала": f"{len(MSEQ_CODE) * MSEQ_Tu * 1e6:.2f} мкс",
+                "Количество импульсов": "1"
+            },
+            resolutions={
+                "Разрешение по дальности (ΔR)": f"{delta_R_mseq:.1f} м",
+                "Разрешение по скорости (ΔV)": f"{delta_V_mseq:.2f} м/с",
+                "Уровень боковых лепестков АКФ": f"~1/{len(MSEQ_CODE)} (для M-последовательности)",
+                "База сигнала": str(len(MSEQ_CODE))
+            }
+        )
+        
+        # Задание 5: Пачка прямоугольных импульсов
+        delta_R_burst = c0 * BURST_Tu / 2
+        delta_V_burst = c0 / (2 * f0 * BURST_N_pt * BURST_Tpr)
+        R_unambiguous = c0 * BURST_Tpr / 2
+        V_unambiguous = c0 / (2 * f0 * BURST_Tpr)
+        
+        self.create_info_block(
+            task_num=5,
+            title="Задание 5: Пачка прямоугольных импульсов",
+            signal_type="Пачка прямоугольных импульсов",
+            params={
+                "Длительность импульса (τи)": f"{BURST_Tu*1e6:.2f} мкс",
+                "Период повторения (Tпр)": f"{BURST_Tpr*1e6:.2f} мкс",
+                "Количество импульсов в пачке": str(BURST_N_pt),
+                "Длительность пачки": f"{BURST_N_pt * BURST_Tpr * 1e6:.1f} мкс"
+            },
+            resolutions={
+                "Разрешение по дальности (ΔR)": f"{delta_R_burst:.1f} м",
+                "Разрешение по скорости (ΔV)": f"{delta_V_burst:.2f} м/с",
+                "Период неоднозначности по дальности": f"{R_unambiguous:.1f} м",
+                "Период неоднозначности по скорости": f"{V_unambiguous:.1f} м/с"
+            }
+        )
+        
+        # Задание 6: R/V диаграмма для пачки прямоугольных импульсов
+        self.create_info_block(
+            task_num=6,
+            title="Задание 6: R/V диаграмма",
+            signal_type="Пачка прямоугольных импульсов",
+            params={
+                "Длительность импульса (τи)": f"{BURST_Tu*1e6:.2f} мкс",
+                "Период повторения (Tпр)": f"{BURST_Tpr*1e6:.2f} мкс",
+                "Количество импульсов": str(BURST_N_pt),
+                "Отображение": "Функция неопределенности в координатах (дальность, скорость)"
+            },
+            resolutions={
+                "Разрешение по дальности (ΔR)": f"{delta_R_burst:.1f} м",
+                "Разрешение по скорости (ΔV)": f"{delta_V_burst:.2f} м/с",
+                "Максимальная однозначная дальность": f"{R_unambiguous:.1f} м",
+                "Максимальная однозначная скорость": f"{V_unambiguous:.1f} м/с"
+            }
+        )
+        
+        # Задание 7: Пачка ЛЧМ сигналов
+        delta_R_lfm_burst = c0 / (2 * LFM_BURST_deltaF)
+        delta_V_lfm_burst = c0 / (2 * f0 * LFM_BURST_N_pt * LFM_BURST_Tpr)
+        R_unambiguous_lfm_burst = c0 * LFM_BURST_Tpr / 2
+        V_unambiguous_lfm_burst = c0 / (2 * f0 * LFM_BURST_Tpr)
+        base_lfm_burst = LFM_BURST_Tu * LFM_BURST_deltaF
+        
+        self.create_info_block(
+            task_num=7,
+            title="Задание 7: Пачка ЛЧМ сигналов",
+            signal_type="Пачка линейно-частотно-модулированных импульсов",
+            params={
+                "Длительность импульса (τи)": f"{LFM_BURST_Tu*1e6:.2f} мкс",
+                "Период повторения (Tпр)": f"{LFM_BURST_Tpr*1e6:.2f} мкс",
+                "Девиация частоты (Δf)": f"{LFM_BURST_deltaF/1e6:.0f} МГц",
+                "Количество импульсов в пачке": str(LFM_BURST_N_pt),
+                "Длительность пачки": f"{LFM_BURST_N_pt * LFM_BURST_Tpr * 1e6:.1f} мкс",
+                "База одного импульса": f"{base_lfm_burst:.0f}"
+            },
+            resolutions={
+                "Разрешение по дальности (после сжатия)": f"{delta_R_lfm_burst:.1f} м",
+                "Разрешение по скорости (пачка)": f"{delta_V_lfm_burst:.2f} м/с",
+                "Период неоднозначности по дальности": f"{R_unambiguous_lfm_burst:.1f} м",
+                "Период неоднозначности по скорости": f"{V_unambiguous_lfm_burst:.1f} м/с",
+                "Коэффициент сжатия ЛЧМ": f"{base_lfm_burst:.0f}"
+            }
+        )
+        
+    def create_info_block(self, task_num, title, signal_type, params, resolutions):
+        """Создание информационного блока для задания"""
+        # Основной фрейм
+        frame = ctk.CTkFrame(self.info_scrollable, corner_radius=8)
+        frame.pack(fill="x", padx=5, pady=8)
+        self.info_frames[task_num] = frame
+        
+        # Цветовая схема для разных заданий
+        colors = ["#1e3a5f", "#2e5a7f", "#3e6a8f", "#4e7a9f", "#5e8aaf", "#6e9abf", "#7eaacf"]
+        color = colors[task_num - 1] if task_num <= len(colors) else "#8ebadf"
         
         # Заголовок
-        title_label = ctk.CTkLabel(self.main_frame, text=" ФУНКЦИЯ НЕОПРЕДЕЛЕННОСТИ РАДИОСИГНАЛОВ", 
-                                    font=ctk.CTkFont(size=20, weight="bold"))
-        title_label.pack(pady=10)
+        title_frame = ctk.CTkFrame(frame, fg_color=color, corner_radius=8)
+        title_frame.pack(fill="x", padx=2, pady=2)
         
-        # Frame для canvas matplotlib
-        self.canvas_frame = ctk.CTkFrame(self.main_frame)
-        self.canvas_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        title_label = ctk.CTkLabel(title_frame, text=title, 
+                                    font=ctk.CTkFont(size=13, weight="bold"))
+        title_label.pack(pady=5)
         
-    def setup_buttons(self):
-        """Кнопки управления внизу"""
-        button_frame = ctk.CTkFrame(self.root, height=60, corner_radius=10)
-        button_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
+        # Тип сигнала
+        type_label = ctk.CTkLabel(title_frame, text=signal_type, 
+                                   font=ctk.CTkFont(size=11, slant="italic"))
+        type_label.pack(pady=2)
         
-        # Ряд кнопок
-        buttons = [
-            (" Прямоугольный импульс", self.calc_pulse),
-            (" Сигнал с ЛЧМ", self.calc_lfm),
-            (" Код Баркера", self.calc_barker),
-            (" М-последовательность", self.calc_msequence),
-            (" Пачка импульсов", self.calc_burst),
-            (" R/V график", self.calc_rv_plot)
+        # Параметры сигнала
+        params_frame = ctk.CTkFrame(frame, corner_radius=8)
+        params_frame.pack(fill="x", padx=5, pady=5)
+        
+        params_title = ctk.CTkLabel(params_frame, text="Параметры сигнала:", 
+                                     font=ctk.CTkFont(size=12, weight="bold"))
+        params_title.pack(pady=3, anchor="w", padx=5)
+        
+        for key, value in params.items():
+            if "последовательность" in key:
+                param_label = ctk.CTkLabel(params_frame, text=f"  {key}: {value}", 
+                                            font=ctk.CTkFont(size=10, family="Consolas"))
+            else:
+                param_label = ctk.CTkLabel(params_frame, text=f"  {key}: {value}", 
+                                            font=ctk.CTkFont(size=11))
+            param_label.pack(pady=1, anchor="w", padx=15)
+        
+        # Разделитель
+        separator = ctk.CTkFrame(frame, height=2, fg_color="gray")
+        separator.pack(fill="x", padx=5, pady=3)
+        
+        # Разрешающие способности
+        res_frame = ctk.CTkFrame(frame, corner_radius=8)
+        res_frame.pack(fill="x", padx=5, pady=5)
+        
+        res_title = ctk.CTkLabel(res_frame, text="Разрешающие способности:", 
+                                  font=ctk.CTkFont(size=12, weight="bold"))
+        res_title.pack(pady=3, anchor="w", padx=5)
+        
+        for key, value in resolutions.items():
+            res_label = ctk.CTkLabel(res_frame, text=f"  {key}: {value}", 
+                                      font=ctk.CTkFont(size=11))
+            res_label.pack(pady=1, anchor="w", padx=15)
+            
+    def add_general_info(self):
+        """Добавление общей информации"""
+        general_frame = ctk.CTkFrame(self.info_scrollable, corner_radius=8)
+        general_frame.pack(fill="x", padx=5, pady=10)
+        
+        general_title = ctk.CTkLabel(general_frame, text="Общие параметры", 
+                                      font=ctk.CTkFont(size=14, weight="bold"))
+        general_title.pack(pady=5)
+        
+        general_params = [
+            f"Скорость света (c0): {c0/1e8:.1f}x10⁸ м/с",
+            f"Рабочая частота (f0): {f0/1e9:.0f} ГГц",
+            f"Длина волны (λ): {lambda_c*100:.0f} см",
+            f"Промежуточная частота (IF): {IF/1e6:.0f} МГц",
+            f"Частота дискретизации (Fs): {Fs/1e6:.0f} МГц",
+            f"Время анализа (Ta): {Ta*1e6:.1f} мкс"
         ]
         
-        for i, (text, command) in enumerate(buttons):
-            btn = ctk.CTkButton(button_frame, text=text, command=command, 
-                                 width=140, height=35, font=ctk.CTkFont(size=12))
-            btn.grid(row=0, column=i, padx=5, pady=10)
+        for param in general_params:
+            label = ctk.CTkLabel(general_frame, text=param, 
+                                 font=ctk.CTkFont(size=11), justify="left")
+            label.pack(pady=2, padx=10, anchor="w")
             
-        # Настройка колонок для равномерного распределения
-        for i in range(len(buttons)):
-            button_frame.columnconfigure(i, weight=1)
-            
-    def setup_output_redirect(self):
-        """Перенаправление stdout в текстовое поле"""
-        class OutputRedirector:
-            def __init__(self, text_widget):
-                self.text_widget = text_widget
-                
-            def write(self, text):
-                if text.strip():
-                    self.text_widget.insert("end", text)
-                    self.text_widget.see("end")
-                    
-            def flush(self):
-                pass
-                
-        sys.stdout = OutputRedirector(self.output_text)
+    def create_figure(self, title, figsize=(12, 8)):
+        """Создание новой фигуры для графика"""
+        fig = Figure(figsize=figsize, facecolor='#2b2b2b')
+        fig.suptitle(title, fontsize=14, color='white', fontweight='bold')
+        return fig
+    
+    def add_plot_to_frame(self, fig, signal_name, task_num):
+        """Добавление графика в прокручиваемую область с привязкой к заданию"""
+        # Создаем фрейм для графика
+        plot_frame = ctk.CTkFrame(self.plots_frame, corner_radius=10)
+        plot_frame.pack(fill="x", expand=False, pady=15, padx=10)
         
-    def clear_output(self):
-        """Очистка текстового поля"""
-        self.output_text.delete("1.0", "end")
-        self.print_welcome()
+        # Заголовок графика
+        title_label = ctk.CTkLabel(plot_frame, text=signal_name, 
+                                    font=ctk.CTkFont(size=16, weight="bold"))
+        title_label.pack(pady=10)
         
-    def update_info_panel(self, signal_name, params, delta_R, delta_V):
-        """Обновление панели информации"""
-        self.current_signal_label.configure(text=f" {signal_name}")
-        info_text = f"τи = {params.get('Tu', 0)*1e6:.2f} мкс\n"
-        if 'deltaF' in params:
-            info_text += f"Δf = {params['deltaF']/1e6:.0f} МГц\n"
-        if 'code_len' in params:
-            info_text += f"Длина кода = {params['code_len']}\n"
-        if 'N_pt' in params:
-            info_text += f"N = {params['N_pt']}\n"
-            info_text += f"Tпр = {params.get('Tpr', 0)*1e6:.2f} мкс\n"
-        info_text += f"\nРазрешение:\n"
-        info_text += f"По дальности: {delta_R:.1f} м\n"
-        info_text += f"По скорости: {delta_V:.2f} м/с"
-        self.resolution_label.configure(text=info_text)
+        # Создаем canvas для matplotlib
+        canvas = FigureCanvasTkAgg(fig, master=plot_frame)
+        canvas.draw()
         
-    def plot_figure(self, fig):
-        """Отображение figure matplotlib в GUI"""
-        if self.canvas:
-            self.canvas.get_tk_widget().destroy()
+        # Добавляем тулбар для интерактивного управления
+        from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk
+        toolbar = NavigationToolbar2Tk(canvas, plot_frame, pack_toolbar=True)
+        toolbar.update()
         
-        self.canvas = FigureCanvasTkAgg(fig, master=self.canvas_frame)
-        self.canvas.draw()
-        self.canvas.get_tk_widget().pack(fill="both", expand=True)
+        # Упаковываем canvas
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=5, pady=5)
         
-    def calc_pulse(self):
-        """Задание 1: Одиночный прямоугольный импульс"""
-        print("\n")
-        print("\nЗАДАНИЕ 1: Одиночный прямоугольный импульс")
-        print("\n")
+    def plot_3d_ambiguity(self, U, signal_name, tau_limits, f_limits, N_tau=300):
+        """Построение 3D функции неопределенности"""
+        tau_min, tau_max = tau_limits
+        f_max_display = f_limits
         
+        amf, tau_af, f_plot = ambiguity_function_full(U, t, Ts, tau_min, tau_max, N_tau, f_max_display)
         
-        Tu = 0.25e-6
-        Tpr = 1.5e-6
-        N_pt = 1
+        # Создание 3D графика
+        fig = Figure(figsize=(12, 8), facecolor='#2b2b2b')
+        fig.suptitle(f'3D Функция неопределенности - {signal_name}', fontsize=14, color='white', fontweight='bold')
         
-        S_ampl = np.zeros(Nt, dtype=float)
-        for n in range(N_pt):
-            mask = (t >= n * Tpr) & (t < n * Tpr + Tu)
-            S_ampl[mask] = 1.0
+        ax = fig.add_subplot(111, projection='3d')
+        ax.set_facecolor('#2b2b2b')
+        ax.xaxis.label.set_color('white')
+        ax.yaxis.label.set_color('white')
+        ax.zaxis.label.set_color('white')
+        ax.tick_params(colors='white')
         
-        U = S_ampl * np.exp(1j * 2 * np.pi * IF * t)
+        # Создание сетки
+        X, Y = np.meshgrid(f_plot, tau_af*1e6)
+        
+        # Построение поверхности
+        surf = ax.plot_surface(X, Y, amf, cmap='viridis', alpha=0.9, linewidth=0, antialiased=True)
+        
+        # Настройка осей
+        ax.set_xlabel('f - f0, МГц', fontsize=11, labelpad=10)
+        ax.set_ylabel('τ, мкс', fontsize=11, labelpad=10)
+        ax.set_zlabel('|χ(τ,f)|, отн.ед.', fontsize=11, labelpad=10)
+        
+        # Добавление colorbar
+        cbar = fig.colorbar(surf, ax=ax, shrink=0.5, aspect=20)
+        cbar.ax.yaxis.label.set_color('white')
+        cbar.ax.tick_params(colors='white')
+        cbar.set_label('Нормированная амплитуда', color='white')
+        
+        # Настройка угла обзора
+        ax.view_init(elev=25, azim=-60)
+        
+        fig.tight_layout()
+        return fig
+        
+    def plot_pulse_signal(self):
+        """Построение графиков для прямоугольного импульса"""
+        U = generate_pulse_signal()
+        
         S = fft(U)
         B = correlate(U, U, mode='full')
         tau = np.linspace(-Ta, Ta, len(B))
         
-        tau_min, tau_max = -Tu, Tu
+        tau_min, tau_max = -PULSE_Tu, PULSE_Tu
         f_max_display = 40e6
         amf, tau_af, f_plot = ambiguity_function_full(U, t, Ts, tau_min, tau_max, 200, f_max_display)
         
-        # Построение графиков
-        fig, axes = plt.subplots(2, 2, figsize=(12, 9))
-        fig.suptitle('Прямоугольный импульс (τи = 0.25 мкс)', fontsize=14, color='white')
-        fig.patch.set_facecolor('#2b2b2b')
+        fig = self.create_figure(f'Прямоугольный импульс (τи = {PULSE_Tu*1e6:.2f} мкс)')
+        axes = fig.subplots(2, 2)
         
         for ax in axes.flat:
             ax.set_facecolor('#2b2b2b')
@@ -270,7 +572,7 @@ class RadarSignalApp:
         f_plot_fft = f - IF
         idx_plot = np.abs(f_plot_fft) <= 40e6
         axes[0, 1].plot(f_plot_fft[idx_plot]/1e6, np.abs(S[idx_plot]), 'g', linewidth=0.8)
-        axes[0, 1].set_xlabel('f - f₀, МГц')
+        axes[0, 1].set_xlabel('f - f0, МГц')
         axes[0, 1].set_ylabel('|S(f)|')
         axes[0, 1].set_title('Амплитудный спектр')
         axes[0, 1].grid(True, alpha=0.3)
@@ -285,61 +587,36 @@ class RadarSignalApp:
         axes[1, 0].grid(True, alpha=0.3)
         
         contour_levels = [0.1, 0.5, 0.707]
-        contour1 = axes[1, 1].contour(f_plot, tau_af*1e6, amf, contour_levels, colors='white', linewidths=1.5)
-        axes[1, 1].clabel(contour1, inline=True, fontsize=8, colors='white')
-        axes[1, 1].set_xlabel('f - f₀, МГц')
+        contour = axes[1, 1].contour(f_plot, tau_af*1e6, amf, contour_levels, colors='white', linewidths=1.5)
+        axes[1, 1].clabel(contour, inline=True, fontsize=8, colors='white')
+        axes[1, 1].set_xlabel('f - f0, МГц')
         axes[1, 1].set_ylabel('τ, мкс')
-        axes[1, 1].set_title('Сечения ФН')
+        axes[1, 1].set_title('Сечения функции неопределенности')
         axes[1, 1].grid(True, alpha=0.3)
         axes[1, 1].axhline(y=0, color='r', linestyle='--', alpha=0.5)
         axes[1, 1].axvline(x=0, color='r', linestyle='--', alpha=0.5)
         
-        plt.tight_layout()
-        self.plot_figure(fig)
+        fig.tight_layout()
+        self.add_plot_to_frame(fig, "1. Прямоугольный импульс", 1)
         
-        delta_R = c0 * Tu / 2
-        delta_V = (1/Tu) * lambda_c / 2
-        self.update_info_panel("Прямоугольный импульс", {'Tu': Tu, 'Tpr': Tpr, 'N_pt': N_pt}, delta_R, delta_V)
+        # 3D график
+        fig_3d = self.plot_3d_ambiguity(U, "Прямоугольный импульс", (-PULSE_Tu, PULSE_Tu), 40e6)
+        self.add_plot_to_frame(fig_3d, "1.3D Прямоугольный импульс (ФН)", 1)
         
-        print(f" Разрешение по дальности: {delta_R:.2f} м")
-        print(f" Разрешение по скорости: {delta_V:.2f} м/с")
-        print(f" Ширина спектра: ~{1/Tu/1e6:.1f} МГц")
-        
-    def calc_lfm(self):
-        """Задание 2: Сигнал с ЛЧМ"""
-        print("\n")
-        print("\nЗАДАНИЕ 2: Сигнал с ЛЧМ")
-        print("\n")
-        
-        
-        Tu = 1e-6
-        Tpr = 5e-6
-        N_pt = 1
-        deltaF = 20e6
-        
-        S_ampl = np.zeros(Nt, dtype=float)
-        for n in range(N_pt):
-            mask = (t >= n * Tpr) & (t < n * Tpr + Tu)
-            S_ampl[mask] = 1.0
-        
-        U = np.zeros(Nt, dtype=complex)
-        for n in range(N_pt):
-            mask = (t >= n * Tpr) & (t < n * Tpr + Tu)
-            t_local = t[mask] - n * Tpr
-            phase = 2 * np.pi * IF * t_local + 2 * np.pi * (deltaF/(2*Tu)) * t_local**2
-            U[mask] = S_ampl[mask] * np.exp(1j * phase)
+    def plot_lfm_signal(self):
+        """Построение графиков для сигнала с ЛЧМ"""
+        U = generate_lfm_signal()
         
         S = fft(U)
         B = correlate(U, U, mode='full')
         tau = np.linspace(-Ta, Ta, len(B))
         
-        tau_min, tau_max = -Tu, Tu
+        tau_min, tau_max = -LFM_Tu, LFM_Tu
         f_max_display = 25e6
         amf, tau_af, f_plot = ambiguity_function_full(U, t, Ts, tau_min, tau_max, 200, f_max_display)
         
-        fig, axes = plt.subplots(2, 2, figsize=(12, 9))
-        fig.suptitle(f'Сигнал с ЛЧМ (τи={Tu*1e6:.2f} мкс, Δf={deltaF/1e6:.0f} МГц)', fontsize=14, color='white')
-        fig.patch.set_facecolor('#2b2b2b')
+        fig = self.create_figure(f'Сигнал с ЛЧМ (τи = {LFM_Tu*1e6:.2f} мкс, Δf = {LFM_deltaF/1e6:.0f} МГц)')
+        axes = fig.subplots(2, 2)
         
         for ax in axes.flat:
             ax.set_facecolor('#2b2b2b')
@@ -357,7 +634,7 @@ class RadarSignalApp:
         f_plot_fft = f - IF
         idx_plot = np.abs(f_plot_fft) <= 25e6
         axes[0, 1].plot(f_plot_fft[idx_plot]/1e6, np.abs(S[idx_plot]), 'g', linewidth=0.8)
-        axes[0, 1].set_xlabel('f - f₀, МГц')
+        axes[0, 1].set_xlabel('f - f0, МГц')
         axes[0, 1].set_ylabel('|S(f)|')
         axes[0, 1].set_title('Амплитудный спектр')
         axes[0, 1].grid(True, alpha=0.3)
@@ -373,50 +650,38 @@ class RadarSignalApp:
         
         X, Y = np.meshgrid(f_plot, tau_af*1e6)
         surf = axes[1, 1].pcolormesh(X, Y, 20*np.log10(amf + 1e-10), shading='auto', cmap='jet_r')
-        axes[1, 1].set_xlabel('f - f₀, МГц')
+        axes[1, 1].set_xlabel('f - f0, МГц')
         axes[1, 1].set_ylabel('τ, мкс')
-        axes[1, 1].set_title('ФН (дБ) - синий:0 дБ, красный:много дБ')
+        axes[1, 1].set_title('Функция неопределенности (дБ)')
         plt.colorbar(surf, ax=axes[1, 1], label='дБ')
         
-        plt.tight_layout()
-        self.plot_figure(fig)
+        fig.tight_layout()
+        self.add_plot_to_frame(fig, "2. Сигнал с ЛЧМ", 2)
         
-        delta_R = c0 / (2 * deltaF)
-        delta_V = (1/Tu) * lambda_c / 2
-        self.update_info_panel("Сигнал с ЛЧМ", {'Tu': Tu, 'deltaF': deltaF}, delta_R, delta_V)
+        # 3D график
+        fig_3d = self.plot_3d_ambiguity(U, "Сигнал с ЛЧМ", (-LFM_Tu, LFM_Tu), 25e6)
+        self.add_plot_to_frame(fig_3d, "2.3D Сигнал с ЛЧМ (ФН)", 2)
         
-        print(f" Разрешение по дальности (после сжатия): {delta_R:.2f} м")
-        print(f" Разрешение по скорости: {delta_V:.2f} м/с")
-        print(f" База сигнала: {Tu * deltaF:.0f}")
+    def plot_barker_signal(self):
+        """Построение графиков для кода Баркера"""
+        U = generate_barker_signal()
         
-    def calc_barker(self):
-        """Задание 3: Код Баркера"""
-        print("\n")
-        print("\nЗАДАНИЕ 3: Код Баркера (длина 13)")
-        print("\n")
-        
-        
-        code = [1, 1, 1, 1, -1, 1, -1, 1, -1, -1, 1, -1, -1]
-        Tu = 0.25e-6
-        Tpr = Tu * len(code)
-        
-        S_ampl = np.zeros(Nt, dtype=float)
-        for i, val in enumerate(code):
-            mask = (t >= i * Tu) & (t < i * Tu + Tu)
-            S_ampl[mask] = val
-        
-        U = S_ampl * np.exp(1j * 2 * np.pi * IF * t)
         S = fft(U)
         B = correlate(U, U, mode='full')
         tau = np.linspace(-Ta, Ta, len(B))
         
-        tau_min, tau_max = -10*Tu, 10*Tu
+        tau_min, tau_max = -10*BARKER_Tu, 10*BARKER_Tu
         f_max_display = 8e6
         amf, tau_af, f_plot = ambiguity_function_full(U, t, Ts, tau_min, tau_max, 300, f_max_display)
         
-        fig, axes = plt.subplots(2, 2, figsize=(12, 9))
-        fig.suptitle(f'Код Баркера (длина {len(code)}, τэ={Tu*1e6:.2f} мкс)', fontsize=14, color='white')
-        fig.patch.set_facecolor('#2b2b2b')
+        # Восстановление огибающей для отображения
+        S_ampl = np.zeros(Nt, dtype=float)
+        for i, val in enumerate(BARKER_CODE):
+            mask = (t >= i * BARKER_Tu) & (t < i * BARKER_Tu + BARKER_Tu)
+            S_ampl[mask] = val
+        
+        fig = self.create_figure(f'Код Баркера (длина {len(BARKER_CODE)}, τэ = {BARKER_Tu*1e6:.2f} мкс)')
+        axes = fig.subplots(2, 2)
         
         for ax in axes.flat:
             ax.set_facecolor('#2b2b2b')
@@ -434,7 +699,7 @@ class RadarSignalApp:
         f_plot_fft = f - IF
         idx_plot = np.abs(f_plot_fft) <= 8e6
         axes[0, 1].plot(f_plot_fft[idx_plot]/1e6, np.abs(S[idx_plot]), 'g', linewidth=0.8)
-        axes[0, 1].set_xlabel('f - f₀, МГц')
+        axes[0, 1].set_xlabel('f - f0, МГц')
         axes[0, 1].set_ylabel('|S(f)|')
         axes[0, 1].set_title('Амплитудный спектр')
         axes[0, 1].grid(True, alpha=0.3)
@@ -449,53 +714,40 @@ class RadarSignalApp:
         axes[1, 0].grid(True, alpha=0.3)
         
         contour_levels = [0.1, 0.5, 0.707]
-        contour3 = axes[1, 1].contour(f_plot, tau_af*1e6, amf, contour_levels, colors='white', linewidths=1.5)
-        axes[1, 1].clabel(contour3, inline=True, fontsize=8, colors='white')
-        axes[1, 1].set_xlabel('f - f₀, МГц')
+        contour = axes[1, 1].contour(f_plot, tau_af*1e6, amf, contour_levels, colors='white', linewidths=1.5)
+        axes[1, 1].clabel(contour, inline=True, fontsize=8, colors='white')
+        axes[1, 1].set_xlabel('f - f0, МГц')
         axes[1, 1].set_ylabel('τ, мкс')
-        axes[1, 1].set_title('Сечения ФН')
+        axes[1, 1].set_title('Сечения функции неопределенности')
         axes[1, 1].grid(True, alpha=0.3)
         
-        plt.tight_layout()
-        self.plot_figure(fig)
+        fig.tight_layout()
+        self.add_plot_to_frame(fig, "3. Код Баркера", 3)
         
-        delta_R = c0 * Tu / 2
-        delta_V = (1/(len(code)*Tu)) * lambda_c / 2
-        self.update_info_panel("Код Баркера", {'Tu': Tu, 'code_len': len(code)}, delta_R, delta_V)
+        # 3D график
+        fig_3d = self.plot_3d_ambiguity(U, "Код Баркера", (-10*BARKER_Tu, 10*BARKER_Tu), 8e6)
+        self.add_plot_to_frame(fig_3d, "3.3D Код Баркера (ФН)", 3)
         
-        print(f" Разрешение по дальности: {delta_R:.2f} м")
-        print(f" Разрешение по скорости: {delta_V:.2f} м/с")
-        print(f" База сигнала: {len(code)}")
-        print(f" Уровень боковых лепестков АКФ: 1/{len(code)} = {1/len(code):.3f} ({20*np.log10(1/len(code)):.1f} дБ)")
+    def plot_msequence_signal(self):
+        """Построение графиков для М-последовательности"""
+        U = generate_msequence_signal()
         
-    def calc_msequence(self):
-        """Задание 4: М-последовательность"""
-        print("\n")
-        print("\nЗАДАНИЕ 4: М-последовательность (длина 15)")
-        print("\n")
-        
-        
-        code = [1, 1, 1, 1, -1, 1, -1, 1, -1, -1, 1, -1, -1, -1, -1]
-        Tu = 0.25e-6
-        Tpr = Tu * len(code)
-        
-        S_ampl = np.zeros(Nt, dtype=float)
-        for i, val in enumerate(code):
-            mask = (t >= i * Tu) & (t < i * Tu + Tu)
-            S_ampl[mask] = val
-        
-        U = S_ampl * np.exp(1j * 2 * np.pi * IF * t)
         S = fft(U)
         B = correlate(U, U, mode='full')
         tau = np.linspace(-Ta, Ta, len(B))
         
-        tau_min, tau_max = -10*Tu, 10*Tu
+        tau_min, tau_max = -10*MSEQ_Tu, 10*MSEQ_Tu
         f_max_display = 8e6
         amf, tau_af, f_plot = ambiguity_function_full(U, t, Ts, tau_min, tau_max, 300, f_max_display)
         
-        fig, axes = plt.subplots(2, 2, figsize=(12, 9))
-        fig.suptitle(f'М-последовательность (длина {len(code)}, τэ={Tu*1e6:.2f} мкс)', fontsize=14, color='white')
-        fig.patch.set_facecolor('#2b2b2b')
+        # Восстановление огибающей для отображения
+        S_ampl = np.zeros(Nt, dtype=float)
+        for i, val in enumerate(MSEQ_CODE):
+            mask = (t >= i * MSEQ_Tu) & (t < i * MSEQ_Tu + MSEQ_Tu)
+            S_ampl[mask] = val
+        
+        fig = self.create_figure(f'М-последовательность (длина {len(MSEQ_CODE)}, τэ = {MSEQ_Tu*1e6:.2f} мкс)')
+        axes = fig.subplots(2, 2)
         
         for ax in axes.flat:
             ax.set_facecolor('#2b2b2b')
@@ -513,7 +765,7 @@ class RadarSignalApp:
         f_plot_fft = f - IF
         idx_plot = np.abs(f_plot_fft) <= 8e6
         axes[0, 1].plot(f_plot_fft[idx_plot]/1e6, np.abs(S[idx_plot]), 'g', linewidth=0.8)
-        axes[0, 1].set_xlabel('f - f₀, МГц')
+        axes[0, 1].set_xlabel('f - f0, МГц')
         axes[0, 1].set_ylabel('|S(f)|')
         axes[0, 1].set_title('Амплитудный спектр')
         axes[0, 1].grid(True, alpha=0.3)
@@ -528,52 +780,40 @@ class RadarSignalApp:
         axes[1, 0].grid(True, alpha=0.3)
         
         contour_levels = [0.1, 0.5, 0.707]
-        contour4 = axes[1, 1].contour(f_plot, tau_af*1e6, amf, contour_levels, colors='white', linewidths=1.5)
-        axes[1, 1].clabel(contour4, inline=True, fontsize=8, colors='white')
-        axes[1, 1].set_xlabel('f - f₀, МГц')
+        contour = axes[1, 1].contour(f_plot, tau_af*1e6, amf, contour_levels, colors='white', linewidths=1.5)
+        axes[1, 1].clabel(contour, inline=True, fontsize=8, colors='white')
+        axes[1, 1].set_xlabel('f - f0, МГц')
         axes[1, 1].set_ylabel('τ, мкс')
-        axes[1, 1].set_title('Сечения ФН')
+        axes[1, 1].set_title('Сечения функции неопределенности')
         axes[1, 1].grid(True, alpha=0.3)
         
-        plt.tight_layout()
-        self.plot_figure(fig)
+        fig.tight_layout()
+        self.add_plot_to_frame(fig, "4. М-последовательность", 4)
         
-        delta_R = c0 * Tu / 2
-        delta_V = (1/(len(code)*Tu)) * lambda_c / 2
-        self.update_info_panel("М-последовательность", {'Tu': Tu, 'code_len': len(code)}, delta_R, delta_V)
+        # 3D график
+        fig_3d = self.plot_3d_ambiguity(U, "М-последовательность", (-10*MSEQ_Tu, 10*MSEQ_Tu), 8e6)
+        self.add_plot_to_frame(fig_3d, "4.3D М-последовательность (ФН)", 4)
         
-        print(f" Разрешение по дальности: {delta_R:.2f} м")
-        print(f" Разрешение по скорости: {delta_V:.2f} м/с")
-        print(f" База сигнала: {len(code)}")
+    def plot_burst_signal(self):
+        """Построение графиков для пачки прямоугольных импульсов"""
+        U = generate_burst_signal()
         
-    def calc_burst(self):
-        """Задание 5: Пачка импульсов"""
-        print("\n")
-        print("\nЗАДАНИЕ 5: Пачка прямоугольных импульсов")
-        print("\n")
-        
-        
-        Tu = 0.25e-6
-        Tpr = 1.5e-6
-        N_pt = 4
-        
-        S_ampl = np.zeros(Nt, dtype=float)
-        for n in range(N_pt):
-            mask = (t >= n * Tpr) & (t < n * Tpr + Tu)
-            S_ampl[mask] = 1.0
-        
-        U = S_ampl * np.exp(1j * 2 * np.pi * IF * t)
         S = fft(U)
         B = correlate(U, U, mode='full')
         tau = np.linspace(-Ta, Ta, len(B))
         
-        tau_min, tau_max = -8*Tu, 8*Tu
+        tau_min, tau_max = -8*BURST_Tu, 8*BURST_Tu
         f_max_display = 40e6
         amf, tau_af, f_plot = ambiguity_function_full(U, t, Ts, tau_min, tau_max, 300, f_max_display)
         
-        fig, axes = plt.subplots(2, 2, figsize=(12, 9))
-        fig.suptitle(f'Пачка импульсов (N={N_pt}, Tпр={Tpr*1e6:.2f} мкс)', fontsize=14, color='white')
-        fig.patch.set_facecolor('#2b2b2b')
+        # Восстановление огибающей для отображения
+        S_ampl = np.zeros(Nt, dtype=float)
+        for n in range(BURST_N_pt):
+            mask = (t >= n * BURST_Tpr) & (t < n * BURST_Tpr + BURST_Tu)
+            S_ampl[mask] = 1.0
+        
+        fig = self.create_figure(f'Пачка прямоугольных импульсов (N = {BURST_N_pt}, Tпр = {BURST_Tpr*1e6:.2f} мкс)')
+        axes = fig.subplots(2, 2)
         
         for ax in axes.flat:
             ax.set_facecolor('#2b2b2b')
@@ -591,7 +831,7 @@ class RadarSignalApp:
         f_plot_fft = f - IF
         idx_plot = np.abs(f_plot_fft) <= 40e6
         axes[0, 1].plot(f_plot_fft[idx_plot]/1e6, np.abs(S[idx_plot]), 'g', linewidth=0.8)
-        axes[0, 1].set_xlabel('f - f₀, МГц')
+        axes[0, 1].set_xlabel('f - f0, МГц')
         axes[0, 1].set_ylabel('|S(f)|')
         axes[0, 1].set_title('Амплитудный спектр')
         axes[0, 1].grid(True, alpha=0.3)
@@ -606,45 +846,27 @@ class RadarSignalApp:
         axes[1, 0].grid(True, alpha=0.3)
         
         contour_levels = [0.1, 0.5, 0.707]
-        contour5 = axes[1, 1].contour(f_plot, tau_af*1e6, amf, contour_levels, colors='white', linewidths=1.5)
-        axes[1, 1].clabel(contour5, inline=True, fontsize=8, colors='white')
-        axes[1, 1].set_xlabel('f - f₀, МГц')
+        contour = axes[1, 1].contour(f_plot, tau_af*1e6, amf, contour_levels, colors='white', linewidths=1.5)
+        axes[1, 1].clabel(contour, inline=True, fontsize=8, colors='white')
+        axes[1, 1].set_xlabel('f - f0, МГц')
         axes[1, 1].set_ylabel('τ, мкс')
-        axes[1, 1].set_title('Сечения ФН')
+        axes[1, 1].set_title('Сечения функции неопределенности')
         axes[1, 1].grid(True, alpha=0.3)
         axes[1, 1].axhline(y=0, color='r', linestyle='--', alpha=0.5)
         axes[1, 1].axvline(x=0, color='r', linestyle='--', alpha=0.5)
         
-        plt.tight_layout()
-        self.plot_figure(fig)
+        fig.tight_layout()
+        self.add_plot_to_frame(fig, "5. Пачка прямоугольных импульсов", 5)
         
-        delta_R = c0 * Tu / 2
-        delta_V = c0 / (2 * f0 * N_pt * Tpr)
-        self.update_info_panel("Пачка импульсов", {'Tu': Tu, 'Tpr': Tpr, 'N_pt': N_pt}, delta_R, delta_V)
+        # 3D график
+        fig_3d = self.plot_3d_ambiguity(U, "Пачка прямоугольных импульсов", (-8*BURST_Tu, 8*BURST_Tu), 40e6)
+        self.add_plot_to_frame(fig_3d, "5.3D Пачка прямоугольных импульсов (ФН)", 5)
         
-        print(f" Разрешение по дальности (одиночный импульс): {delta_R:.2f} м")
-        print(f" Разрешение по скорости (пачка): {delta_V:.2f} м/с")
-        print(f" Период неоднозначности по дальности: {c0 * Tpr / 2:.1f} м")
+    def plot_rv_diagram(self):
+        """Построение R/V диаграммы для пачки прямоугольных импульсов"""
+        U = generate_burst_signal()
         
-    def calc_rv_plot(self):
-        """Дополнительный график: ФН в координатах (R, V)"""
-        print("\n")
-        print("\nДОПОЛНИТЕЛЬНЫЙ ГРАФИК: R/V диаграмма для пачки импульсов")
-        print("\n")
-        
-        
-        Tu = 0.25e-6
-        Tpr = 1.5e-6
-        N_pt = 4
-        
-        S_ampl = np.zeros(Nt, dtype=float)
-        for n in range(N_pt):
-            mask = (t >= n * Tpr) & (t < n * Tpr + Tu)
-            S_ampl[mask] = 1.0
-        
-        U = S_ampl * np.exp(1j * 2 * np.pi * IF * t)
-        
-        tau_min, tau_max = -8*Tu, 8*Tu
+        tau_min, tau_max = -8*BURST_Tu, 8*BURST_Tu
         f_max_display = 40e6
         amf, tau_af, f_plot = ambiguity_function_full(U, t, Ts, tau_min, tau_max, 300, f_max_display)
         
@@ -653,12 +875,12 @@ class RadarSignalApp:
         V_f = f_plot * 1e6 * c0 / (2 * f0)
         
         # Физические пределы
-        R_max_unambiguous = c0 * Tpr / 2
-        delta_R = c0 * Tu / 2
-        delta_V = c0 / (2 * f0 * N_pt * Tpr)
+        R_max_unambiguous = c0 * BURST_Tpr / 2
+        delta_R = c0 * BURST_Tu / 2
+        delta_V = c0 / (2 * f0 * BURST_N_pt * BURST_Tpr)
         
         R_limit = min(3 * R_max_unambiguous, 1000)
-        V_limit = 3 * c0 / (2 * f0 * Tpr)
+        V_limit = 3 * c0 / (2 * f0 * BURST_Tpr)
         
         mask_R = np.abs(R_tau) <= R_limit
         mask_V = np.abs(V_f) <= V_limit
@@ -666,13 +888,11 @@ class RadarSignalApp:
         V_f_cut = V_f[mask_V]
         amf_cut = amf[np.ix_(mask_R, mask_V)]
         
-        print(f" Период неоднозначности по дальности: {R_max_unambiguous:.1f} м")
-        print(f" Разрешение по дальности: {delta_R:.1f} м")
-        print(f" Разрешение по скорости: {delta_V:.2f} м/с")
-        print(f" Пределы графика: R = ±{R_limit:.0f} м, V = ±{V_limit:.0f} м/с")
-        
-        fig, ax = plt.subplots(figsize=(12, 10))
-        fig.patch.set_facecolor('#2b2b2b')
+        # Создание фигуры
+        fig = Figure(figsize=(12, 10), facecolor='#2b2b2b')
+        fig.suptitle('Функция неопределенности пачки прямоугольных импульсов в координатах (дальность, скорость)', 
+                     fontsize=14, color='white', fontweight='bold')
+        ax = fig.add_subplot(111)
         ax.set_facecolor('#2b2b2b')
         ax.tick_params(colors='white')
         ax.xaxis.label.set_color('white')
@@ -694,7 +914,171 @@ class RadarSignalApp:
         
         ax.set_xlabel(f'Скорость V, м/с (ΔV = {delta_V:.1f} м/с)', fontsize=12)
         ax.set_ylabel(f'Дальность R, м (ΔR = {delta_R:.1f} м, R_max = {R_max_unambiguous:.0f} м)', fontsize=12)
-        ax.set_title('Функция неопределенности пачки импульсов\nв координатах (дальность, скорость)', fontsize=14)
+        ax.set_title('Функция неопределенности в координатах (дальность, скорость)', fontsize=13)
+        
+        ax.axhline(y=0, color='white', linestyle='--', alpha=0.7, linewidth=1.5)
+        ax.axvline(x=0, color='white', linestyle='--', alpha=0.7, linewidth=1.5)
+        ax.set_xlim([-V_limit, V_limit])
+        ax.set_ylim([-R_limit, R_limit])
+        ax.grid(True, alpha=0.3, linestyle='--')
+        
+        ax.text(0, 0, 'Главный лепесток', ha='center', va='center', 
+                fontsize=10, color='white', fontweight='bold')
+        
+        fig.tight_layout()
+        self.add_plot_to_frame(fig, "6. R/V диаграмма для пачки прямоугольных импульсов", 6)
+        
+        # 3D график для R/V диаграммы
+        fig_3d = Figure(figsize=(12, 8), facecolor='#2b2b2b')
+        fig_3d.suptitle('3D Функция неопределенности в координатах (дальность, скорость)', 
+                        fontsize=14, color='white', fontweight='bold')
+        ax_3d = fig_3d.add_subplot(111, projection='3d')
+        ax_3d.set_facecolor('#2b2b2b')
+        ax_3d.xaxis.label.set_color('white')
+        ax_3d.yaxis.label.set_color('white')
+        ax_3d.zaxis.label.set_color('white')
+        ax_3d.tick_params(colors='white')
+        
+        X_grid_3d, Y_grid_3d = np.meshgrid(V_f_cut, R_tau_cut)
+        surf = ax_3d.plot_surface(X_grid_3d, Y_grid_3d, amf_cut, cmap='viridis', alpha=0.9, linewidth=0, antialiased=True)
+        
+        ax_3d.set_xlabel('Скорость V, м/с', fontsize=11, labelpad=10)
+        ax_3d.set_ylabel('Дальность R, м', fontsize=11, labelpad=10)
+        ax_3d.set_zlabel('|χ(τ,f)|, отн.ед.', fontsize=11, labelpad=10)
+        
+        cbar = fig_3d.colorbar(surf, ax=ax_3d, shrink=0.5, aspect=20)
+        cbar.ax.yaxis.label.set_color('white')
+        cbar.ax.tick_params(colors='white')
+        cbar.set_label('Нормированная амплитуда', color='white')
+        
+        ax_3d.view_init(elev=25, azim=-60)
+        
+        fig_3d.tight_layout()
+        self.add_plot_to_frame(fig_3d, "6.3D R/V диаграмма (ФН)", 6)
+        
+    def plot_lfm_burst_signal(self):
+        """Построение графиков для пачки ЛЧМ сигналов"""
+        U = generate_lfm_burst_signal()
+        
+        S = fft(U)
+        B = correlate(U, U, mode='full')
+        tau = np.linspace(-Ta, Ta, len(B))
+        
+        tau_min, tau_max = -8*LFM_BURST_Tu, 8*LFM_BURST_Tu
+        f_max_display = 15e6
+        amf, tau_af, f_plot = ambiguity_function_full(U, t, Ts, tau_min, tau_max, 300, f_max_display)
+        
+        # Восстановление огибающей для отображения
+        S_ampl = np.zeros(Nt, dtype=float)
+        for n in range(LFM_BURST_N_pt):
+            mask = (t >= n * LFM_BURST_Tpr) & (t < n * LFM_BURST_Tpr + LFM_BURST_Tu)
+            S_ampl[mask] = 1.0
+        
+        fig = self.create_figure(f'Пачка ЛЧМ сигналов (N = {LFM_BURST_N_pt}, Tпр = {LFM_BURST_Tpr*1e6:.2f} мкс, Δf = {LFM_BURST_deltaF/1e6:.0f} МГц)')
+        axes = fig.subplots(2, 2)
+        
+        for ax in axes.flat:
+            ax.set_facecolor('#2b2b2b')
+            ax.tick_params(colors='white')
+            ax.xaxis.label.set_color('white')
+            ax.yaxis.label.set_color('white')
+            ax.title.set_color('white')
+        
+        # Огибающая пачки (действительная часть для ЛЧМ)
+        axes[0, 0].plot(t*1e6, np.real(U), 'b', linewidth=0.8)
+        axes[0, 0].set_xlabel('t, мкс')
+        axes[0, 0].set_ylabel('U(t), B')
+        axes[0, 0].set_title('Пачка ЛЧМ сигналов (Re)')
+        axes[0, 0].grid(True, alpha=0.3)
+        
+        # Спектр
+        f_plot_fft = f - IF
+        idx_plot = np.abs(f_plot_fft) <= 15e6
+        axes[0, 1].plot(f_plot_fft[idx_plot]/1e6, np.abs(S[idx_plot]), 'g', linewidth=0.8)
+        axes[0, 1].set_xlabel('f - f0, МГц')
+        axes[0, 1].set_ylabel('|S(f)|')
+        axes[0, 1].set_title('Амплитудный спектр')
+        axes[0, 1].grid(True, alpha=0.3)
+        
+        # АКФ
+        B_norm = np.abs(B) / np.max(np.abs(B))
+        tau_us = tau * 1e6
+        idx_akf = np.abs(tau_us) <= 12
+        axes[1, 0].plot(tau_us[idx_akf], B_norm[idx_akf], 'm', linewidth=0.8)
+        axes[1, 0].set_xlabel('τ, мкс')
+        axes[1, 0].set_ylabel('|B(τ)|, отн.ед.')
+        axes[1, 0].set_title('Нормированная АКФ')
+        axes[1, 0].grid(True, alpha=0.3)
+        
+        # Функция неопределенности (2D сечение)
+        X, Y = np.meshgrid(f_plot, tau_af*1e6)
+        surf = axes[1, 1].pcolormesh(X, Y, 20*np.log10(amf + 1e-10), shading='auto', cmap='jet_r')
+        axes[1, 1].set_xlabel('f - f0, МГц')
+        axes[1, 1].set_ylabel('τ, мкс')
+        axes[1, 1].set_title('Функция неопределенности (дБ)')
+        plt.colorbar(surf, ax=axes[1, 1], label='дБ')
+        
+        fig.tight_layout()
+        self.add_plot_to_frame(fig, "7. Пачка ЛЧМ сигналов", 7)
+        
+        # 3D график
+        fig_3d = self.plot_3d_ambiguity(U, "Пачка ЛЧМ сигналов", (-8*LFM_BURST_Tu, 8*LFM_BURST_Tu), 15e6)
+        self.add_plot_to_frame(fig_3d, "7.3D Пачка ЛЧМ сигналов (ФН)", 7)
+        
+        # R/V диаграмма для пачки ЛЧМ
+        self.plot_lfm_burst_rv_diagram(U)
+        
+    def plot_lfm_burst_rv_diagram(self, U):
+        """Построение R/V диаграммы для пачки ЛЧМ сигналов"""
+        tau_min, tau_max = -8*LFM_BURST_Tu, 8*LFM_BURST_Tu
+        f_max_display = 15e6
+        amf, tau_af, f_plot = ambiguity_function_full(U, t, Ts, tau_min, tau_max, 300, f_max_display)
+        
+        # Пересчет в координаты дальности и скорости
+        R_tau = tau_af * c0 / 2
+        V_f = f_plot * 1e6 * c0 / (2 * f0)
+        
+        # Физические пределы
+        R_max_unambiguous = c0 * LFM_BURST_Tpr / 2
+        delta_R = c0 / (2 * LFM_BURST_deltaF)
+        delta_V = c0 / (2 * f0 * LFM_BURST_N_pt * LFM_BURST_Tpr)
+        
+        R_limit = min(3 * R_max_unambiguous, 1500)
+        V_limit = 3 * c0 / (2 * f0 * LFM_BURST_Tpr)
+        
+        mask_R = np.abs(R_tau) <= R_limit
+        mask_V = np.abs(V_f) <= V_limit
+        R_tau_cut = R_tau[mask_R]
+        V_f_cut = V_f[mask_V]
+        amf_cut = amf[np.ix_(mask_R, mask_V)]
+        
+        # Создание фигуры
+        fig = Figure(figsize=(12, 10), facecolor='#2b2b2b')
+        fig.suptitle('Функция неопределенности пачки ЛЧМ сигналов в координатах (дальность, скорость)', 
+                     fontsize=14, color='white', fontweight='bold')
+        ax = fig.add_subplot(111)
+        ax.set_facecolor('#2b2b2b')
+        ax.tick_params(colors='white')
+        ax.xaxis.label.set_color('white')
+        ax.yaxis.label.set_color('white')
+        ax.title.set_color('white')
+        
+        X_grid, Y_grid = np.meshgrid(V_f_cut, R_tau_cut)
+        levels = np.linspace(0, 1, 50)
+        cf = ax.contourf(X_grid, Y_grid, amf_cut, levels=levels, cmap='viridis', alpha=0.9)
+        
+        contour_levels_rv = [0.1, 0.5, 0.707]
+        contour_RV = ax.contour(X_grid, Y_grid, amf_cut, contour_levels_rv, 
+                                 colors='red', linewidths=2.5, linestyles='solid')
+        ax.clabel(contour_RV, inline=True, fontsize=11, fmt='%.1f', colors='white')
+        
+        cbar = plt.colorbar(cf, ax=ax, label='|χ(τ,f)|, отн.ед.')
+        cbar.ax.yaxis.label.set_color('white')
+        cbar.ax.tick_params(colors='white')
+        
+        ax.set_xlabel(f'Скорость V, м/с (ΔV = {delta_V:.1f} м/с)', fontsize=12)
+        ax.set_ylabel(f'Дальность R, м (ΔR = {delta_R:.1f} м, R_max = {R_max_unambiguous:.0f} м)', fontsize=12)
+        ax.set_title('Функция неопределенности в координатах (дальность, скорость) для пачки ЛЧМ', fontsize=13)
         
         ax.axhline(y=0, color='white', linestyle='--', alpha=0.7, linewidth=1.5)
         ax.axvline(x=0, color='white', linestyle='--', alpha=0.7, linewidth=1.5)
@@ -705,20 +1089,72 @@ class RadarSignalApp:
         ax.text(0, 0, 'Главный\nлепесток', ha='center', va='center', 
                 fontsize=10, color='white', fontweight='bold')
         
-        param_text = f'Параметры сигнала:\n'
-        param_text += f'τи = {Tu*1e6:.2f} мкс\n'
-        param_text += f'Tпр = {Tpr*1e6:.2f} мкс\n'
-        param_text += f'N = {N_pt}\n\n'
-        param_text += f'ΔR = {delta_R:.1f} м\n'
-        param_text += f'ΔV = {delta_V:.2f} м/с\n'
-        param_text += f'R_max = {R_max_unambiguous:.0f} м'
+        fig.tight_layout()
+        self.add_plot_to_frame(fig, "7. R/V диаграмма для пачки ЛЧМ сигналов", 7)
         
-        ax.annotate(param_text, xy=(0.02, 0.98), xycoords='axes fraction',
-                    fontsize=10, va='top', ha='left', color='black',
-                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+        # 3D график для R/V диаграммы
+        fig_3d = Figure(figsize=(12, 8), facecolor='#2b2b2b')
+        fig_3d.suptitle('3D Функция неопределенности пачки ЛЧМ в координатах (дальность, скорость)', 
+                        fontsize=14, color='white', fontweight='bold')
+        ax_3d = fig_3d.add_subplot(111, projection='3d')
+        ax_3d.set_facecolor('#2b2b2b')
+        ax_3d.xaxis.label.set_color('white')
+        ax_3d.yaxis.label.set_color('white')
+        ax_3d.zaxis.label.set_color('white')
+        ax_3d.tick_params(colors='white')
         
-        plt.tight_layout()
-        self.plot_figure(fig)
+        X_grid_3d, Y_grid_3d = np.meshgrid(V_f_cut, R_tau_cut)
+        surf = ax_3d.plot_surface(X_grid_3d, Y_grid_3d, amf_cut, cmap='viridis', alpha=0.9, linewidth=0, antialiased=True)
+        
+        ax_3d.set_xlabel('Скорость V, м/с', fontsize=11, labelpad=10)
+        ax_3d.set_ylabel('Дальность R, м', fontsize=11, labelpad=10)
+        ax_3d.set_zlabel('|χ(τ,f)|, отн.ед.', fontsize=11, labelpad=10)
+        
+        cbar = fig_3d.colorbar(surf, ax=ax_3d, shrink=0.5, aspect=20)
+        cbar.ax.yaxis.label.set_color('white')
+        cbar.ax.tick_params(colors='white')
+        cbar.set_label('Нормированная амплитуда', color='white')
+        
+        ax_3d.view_init(elev=25, azim=-60)
+        
+        fig_3d.tight_layout()
+        self.add_plot_to_frame(fig_3d, "7.3D R/V диаграмма для пачки ЛЧМ (ФН)", 7)
+        
+    def generate_all_plots(self):
+        """Генерация и отображение всех графиков"""
+        print("\n" + "="*70)
+        print(" ГЕНЕРАЦИЯ ВСЕХ ГРАФИКОВ")
+        print("="*70)
+        print("\nВыполняется расчет и построение графиков...\n")
+        
+        self.plot_pulse_signal()
+        print(" 1. Прямоугольный импульс + 3D ФН")
+        
+        self.plot_lfm_signal()
+        print(" 2. Сигнал с ЛЧМ + 3D ФН")
+        
+        self.plot_barker_signal()
+        print(" 3. Код Баркера + 3D ФН")
+        
+        self.plot_msequence_signal()
+        print(" 4. М-последовательность + 3D ФН")
+        
+        self.plot_burst_signal()
+        print(" 5. Пачка прямоугольных импульсов + 3D ФН")
+        
+        self.plot_rv_diagram()
+        print(" 6. R/V диаграмма для пачки прямоугольных импульсов")
+        
+        self.plot_lfm_burst_signal()
+        print(" 7. Пачка ЛЧМ сигналов + 3D ФН + R/V диаграмма")
+        
+        print("\n" + "="*70)
+        print(" ВСЕ ГРАФИКИ УСПЕШНО ПОСТРОЕНЫ")
+        print(" Добавлено задание 7: Пачка ЛЧМ сигналов")
+        print(" Параметры пачки ЛЧМ: τи=2 мкс, Tпр=5 мкс, N=4, Δf=10 МГц")
+        print(" Используйте ползунок справа для прокрутки")
+        print(" 3D графики можно вращать мышью")
+        print("="*70 + "\n")
         
     def run(self):
         """Запуск приложения"""
