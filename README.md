@@ -1,3 +1,3 @@
- 1.Любой Коммит только zip/rar в этой ветке. 
- 2.Тут публикуется еще не собранный в exe код.
- 3.Собранный код в exe в следующей ветке.
+https://drive.google.com/file/d/1D_DRTIbXLabxBIReO5VrPbf5LiwvGwdf/view?usp=sharing
+
+EXE файл лаб
